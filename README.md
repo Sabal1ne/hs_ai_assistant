@@ -15,6 +15,7 @@ recommend plays, and displays the suggestion in a transparent overlay window.
 | `hs_mcts.py` | Determinized Monte Carlo Tree Search AI |
 | `overlay.py` | Transparent, click-through GUI overlay |
 | `utils.py` | Cross-platform Hearthstone log-path finder |
+| `card_db.py` | Real card data from [HearthSim/hsdata](https://github.com/HearthSim/hsdata) via the `hearthstone` package |
 
 ---
 
@@ -96,6 +97,9 @@ Power.log  -->  LogParser  -->  game_state dict
                                       |
                                   overlay
                               (AIOverlay.update_suggestion)
+
+card_db  ─────────────────────────> hs_mcts
+(hearthstone/hsdata)          (determinize card pool)
 ```
 
 ---
@@ -103,7 +107,13 @@ Power.log  -->  LogParser  -->  game_state dict
 ## Requirements
 
 * Python 3.8+
-* Standard library only (`tkinter` for the overlay and the path-finder GUI)
+* `hearthstone` + `hearthstone-data` (**optional**, for real card data):
+  ```bash
+  pip install -r requirements.txt
+  ```
+  Without these packages `card_db.is_available()` returns `False` and the
+  MCTS falls back to built-in minimal card lists.
+* Standard library only otherwise (`tkinter` for the overlay and path-finder GUI)
 * `pytest` for running the test suite
 
 ---
@@ -117,14 +127,33 @@ python -m pytest tests/ -v
 
 ---
 
+## Card database (`card_db.py`)
+
+`card_db.py` integrates the [HearthSim/hsdata](https://github.com/HearthSim/hsdata)
+dataset via the `hearthstone` Python package:
+
+```python
+from card_db import get_cards_for_class, make_card, is_available
+
+if is_available():
+    mage_cards = get_cards_for_class("Mage")      # list of card dicts
+    fireball   = make_card(mage_cards[0])          # hs_simulator.Card
+```
+
+The database contains **34 000+ cards** (version 35.2).  Only collectible
+Minions, Spells, and Weapons are returned.  Neutral cards are automatically
+included unless `include_neutral=False` is passed.
+
+---
+
 ## Notes
 
 * The overlay uses `tkinter` (included with CPython). On Windows it also
   applies `WS_EX_LAYERED | WS_EX_TRANSPARENT` via `ctypes` so mouse
   clicks pass through to the game.
-* MCTS determinization samples plausible enemy hands from built-in archetype
-  pools (`hs_mcts._ARCHETYPES`). Extend this dict with custom card lists for
-  more accurate suggestions.
+* MCTS determinization now uses the full real card pool from `card_db` when
+  the optional packages are installed; otherwise it falls back to the built-in
+  `_FALLBACK_ARCHETYPES` in `hs_mcts.py`.
 * Set the `HS_LOG_PATH` environment variable to skip auto-detection:
   ```
   HS_LOG_PATH=C:\path\to\Hearthstone\Logs\Power.log

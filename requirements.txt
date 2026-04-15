@@ -1,0 +1,8 @@
+# Core optional dependency: HearthSim card database
+# Install both to enable full card-data features in card_db.py and hs_mcts.py.
+# Without these packages the code falls back to built-in minimal card lists.
+hearthstone>=9.20.2
+hearthstone-data>=239550.2
+
+# GUI overlay (already part of the standard library on most platforms)
+# PyQt5  # uncomment to use the Qt-based overlay variant instead of tkinter

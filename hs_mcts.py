@@ -34,7 +34,10 @@ Algorithm overview
 Dependencies
 ~~~~~~~~~~~~
 * ``hs_simulator`` – ``GameState`` / ``Card`` / ``CardType`` / ``Hero``.
-* Standard library only (no external packages).
+* ``card_db`` – real card data from the optional ``hearthstone`` /
+  ``hearthstone_data`` packages (https://github.com/HearthSim/hsdata).
+  When not installed, falls back to the built-in minimal card lists.
+* Standard library only (no other external packages).
 """
 
 from __future__ import annotations
@@ -45,15 +48,16 @@ import random
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+import card_db as _card_db
 from hs_simulator import Card, CardType, GameState, Hero, Mechanic
 
 # ---------------------------------------------------------------------------
-# Meta-deck archetypes used for determinization
+# Fallback card pools
 # ---------------------------------------------------------------------------
-# Each archetype is a list of (card_id, name, cost, attack, health, CardType,
-# mechanics) tuples representing cards likely to be in that deck.
+# Used when the optional hearthstone/hearthstone_data packages are not
+# installed.  Each entry is a dict compatible with hs_simulator.Card(**d).
 
-_ARCHETYPES: Dict[str, List[Dict[str, Any]]] = {
+_FALLBACK_ARCHETYPES: Dict[str, List[Dict[str, Any]]] = {
     "Mage": [
         {"id": "EX1_277", "name": "Arcane Intellect", "cost": 3,
          "attack": 0, "health": 0, "card_type": CardType.SPELL, "mechanics": set()},
@@ -170,6 +174,41 @@ _ARCHETYPES: Dict[str, List[Dict[str, Any]]] = {
     ],
 }
 
+
+def _get_card_pool(archetype: str) -> List[Dict[str, Any]]:
+    """
+    Return the card pool for *archetype* using the real database when
+    available, otherwise fall back to the built-in minimal lists.
+
+    Parameters
+    ----------
+    archetype:
+        Hero-class name (e.g. ``"Mage"``) or ``"generic"`` for a neutral
+        cross-class sample.
+
+    Returns
+    -------
+    List of card dicts (``id``, ``name``, ``cost``, ``attack``, ``health``,
+    ``card_type``, ``mechanics``).
+    """
+    if _card_db.is_available():
+        class_name = archetype if archetype != "generic" else "Neutral"
+        cards = _card_db.get_cards_for_class(
+            class_name, include_neutral=(archetype != "generic")
+        )
+        if cards:
+            return cards
+    # Fallback
+    return _fallback_pool(archetype)
+
+
+def _fallback_pool(archetype: str) -> List[Dict[str, Any]]:
+    """Return entries from ``_FALLBACK_ARCHETYPES``, combining class + generic."""
+    pool = _FALLBACK_ARCHETYPES.get(archetype, [])
+    if archetype != "generic":
+        pool = pool + _FALLBACK_ARCHETYPES["generic"]
+    return pool
+
 # Exploration constant for UCB1
 UCB1_C: float = math.sqrt(2)
 
@@ -274,8 +313,10 @@ def determinize(
     state:
         Current known game state (enemy hand is assumed to be empty / unknown).
     enemy_deck_archetype:
-        A key into the internal archetype table (e.g. ``"Mage"``).
-        Falls back to ``"generic"`` if not found.
+        Hero-class name (e.g. ``"Mage"``) or ``"generic"``.  When the
+        optional ``hearthstone``/``hearthstone_data`` packages are installed
+        the full real card pool for that class is used; otherwise the
+        built-in fallback list is used.
     num_worlds:
         How many different hypothetical worlds to create (3–5 recommended).
     hand_size:
@@ -285,7 +326,7 @@ def determinize(
     -------
     List of GameState clones, each with a different sampled enemy hand.
     """
-    pool_dicts = _ARCHETYPES.get(enemy_deck_archetype, []) + _ARCHETYPES["generic"]
+    pool_dicts = _get_card_pool(enemy_deck_archetype)
 
     worlds: List[GameState] = []
     for _ in range(num_worlds):
